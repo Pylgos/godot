@@ -1432,28 +1432,23 @@ void DisplayServerX11::_update_window_mouse_passthrough(WindowID p_window) {
 	int event_base, error_base;
 	const Bool ext_okay = XShapeQueryExtension(x11_display, &event_base, &error_base);
 	if (ext_okay) {
-		Region region;
 		if (windows[p_window].mpass) {
-			region = XCreateRegion();
+			Region region = XCreateRegion();
+			XShapeCombineRegion(x11_display, windows[p_window].x11_window, ShapeInput, 0, 0, region, ShapeSet);
+			XDestroyRegion(region);
 		} else if (region_path.size() == 0) {
-			region = XCreateRegion();
-			XRectangle rect;
-			rect.x = 0;
-			rect.y = 0;
-			rect.width = window_get_size_with_decorations(p_window).x;
-			rect.height = window_get_size_with_decorations(p_window).y;
-			XUnionRectWithRegion(&rect, region, region);
+			XShapeCombineMask(x11_display, windows[p_window].x11_window, ShapeInput, 0, 0, None, ShapeSet);
 		} else {
 			XPoint *points = (XPoint *)memalloc(sizeof(XPoint) * region_path.size());
 			for (int i = 0; i < region_path.size(); i++) {
 				points[i].x = region_path[i].x;
 				points[i].y = region_path[i].y;
 			}
-			region = XPolygonRegion(points, region_path.size(), EvenOddRule);
+			Region region = XPolygonRegion(points, region_path.size(), EvenOddRule);
 			memfree(points);
+			XShapeCombineRegion(x11_display, windows[p_window].x11_window, ShapeInput, 0, 0, region, ShapeSet);
+			XDestroyRegion(region);
 		}
-		XShapeCombineRegion(x11_display, windows[p_window].x11_window, ShapeInput, 0, 0, region, ShapeSet);
-		XDestroyRegion(region);
 	}
 }
 
@@ -4581,18 +4576,20 @@ DisplayServer *DisplayServerX11::create_func(const String &p_rendering_driver, W
 	if (r_error != OK) {
 		if (p_rendering_driver == "vulkan") {
 			String executable_name = OS::get_singleton()->get_executable_path().get_file();
-			OS::get_singleton()->alert("Your video card driver does not support the selected Vulkan version.\n"
-									   "Please try updating your GPU driver or try using the OpenGL 3 driver.\n"
-									   "You can enable the OpenGL 3 driver by starting the engine from the\n"
-									   "command line with the command:\n'./" +
-							executable_name + " --rendering-driver opengl3'.\n "
-											  "If you have updated your graphics drivers recently, try rebooting.",
-					"Unable to initialize Video driver");
+			OS::get_singleton()->alert(
+					vformat("Your video card drivers seem not to support the required Vulkan version.\n\n"
+							"If possible, consider updating your video card drivers or using the OpenGL 3 driver.\n\n"
+							"You can enable the OpenGL 3 driver by starting the engine from the\n"
+							"command line with the command:\n'%s --rendering-driver opengl3'\n\n"
+							"If you recently updated your video card drivers, try rebooting.",
+							executable_name),
+					"Unable to initialize Vulkan video driver");
 		} else {
-			OS::get_singleton()->alert("Your video card driver does not support the selected OpenGL version.\n"
-									   "Please try updating your GPU driver.\n"
-									   "If you have updated your graphics drivers recently, try rebooting.",
-					"Unable to initialize Video driver");
+			OS::get_singleton()->alert(
+					"Your video card drivers seem not to support the required OpenGL 3.3 version.\n\n"
+					"If possible, consider updating your video card drivers.\n\n"
+					"If you recently updated your video card drivers, try rebooting.",
+					"Unable to initialize OpenGL video driver");
 		}
 	}
 	return ds;

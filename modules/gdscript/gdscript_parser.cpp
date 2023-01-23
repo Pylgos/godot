@@ -41,6 +41,7 @@
 #include "core/os/os.h"
 #include "core/string/string_builder.h"
 #include "gdscript_warning.h"
+#include "servers/text_server.h"
 #endif // DEBUG_ENABLED
 
 #ifdef TOOLS_ENABLED
@@ -186,24 +187,6 @@ void GDScriptParser::push_error(const String &p_message, const Node *p_origin) {
 }
 
 #ifdef DEBUG_ENABLED
-void GDScriptParser::push_warning(const Node *p_source, GDScriptWarning::Code p_code, const String &p_symbol1, const String &p_symbol2, const String &p_symbol3, const String &p_symbol4) {
-	ERR_FAIL_COND(p_source == nullptr);
-	Vector<String> symbols;
-	if (!p_symbol1.is_empty()) {
-		symbols.push_back(p_symbol1);
-	}
-	if (!p_symbol2.is_empty()) {
-		symbols.push_back(p_symbol2);
-	}
-	if (!p_symbol3.is_empty()) {
-		symbols.push_back(p_symbol3);
-	}
-	if (!p_symbol4.is_empty()) {
-		symbols.push_back(p_symbol4);
-	}
-	push_warning(p_source, p_code, symbols);
-}
-
 void GDScriptParser::push_warning(const Node *p_source, GDScriptWarning::Code p_code, const Vector<String> &p_symbols) {
 	ERR_FAIL_COND(p_source == nullptr);
 	if (is_ignoring_warnings) {
@@ -540,43 +523,28 @@ void GDScriptParser::parse_program() {
 	head = alloc_node<ClassNode>();
 	head->fqcn = script_path;
 	current_class = head;
+	bool can_have_class_or_extends = true;
 
-	// If we happen to parse an annotation before extends or class_name keywords, track it.
-	// @tool is allowed, but others should fail.
-	AnnotationNode *premature_annotation = nullptr;
-
-	if (match(GDScriptTokenizer::Token::ANNOTATION)) {
-		// Check for @tool, script-level, or standalone annotation.
+	while (match(GDScriptTokenizer::Token::ANNOTATION)) {
 		AnnotationNode *annotation = parse_annotation(AnnotationInfo::SCRIPT | AnnotationInfo::STANDALONE | AnnotationInfo::CLASS_LEVEL);
 		if (annotation != nullptr) {
-			if (annotation->name == SNAME("@tool")) {
-				// TODO: don't allow @tool anywhere else. (Should all script annotations be the first thing?).
-				_is_tool = true;
-				if (previous.type != GDScriptTokenizer::Token::NEWLINE) {
-					push_error(R"(Expected newline after "@tool" annotation.)");
-				}
-				// @tool annotation has no specific target.
-				annotation->apply(this, nullptr);
-			} else if (annotation->applies_to(AnnotationInfo::SCRIPT | AnnotationInfo::STANDALONE)) {
-				premature_annotation = annotation;
-				if (previous.type != GDScriptTokenizer::Token::NEWLINE) {
-					push_error(R"(Expected newline after a standalone annotation.)");
-				}
+			if (annotation->applies_to(AnnotationInfo::SCRIPT)) {
 				annotation->apply(this, head);
 			} else {
-				premature_annotation = annotation;
 				annotation_stack.push_back(annotation);
+				// This annotation must appear after script-level annotations
+				// and class_name/extends (ex: could be @onready or @export),
+				// so we stop looking for script-level stuff.
+				can_have_class_or_extends = false;
+				break;
 			}
 		}
 	}
 
-	for (bool should_break = false; !should_break;) {
+	while (can_have_class_or_extends) {
 		// Order here doesn't matter, but there should be only one of each at most.
 		switch (current.type) {
 			case GDScriptTokenizer::Token::CLASS_NAME:
-				if (premature_annotation != nullptr) {
-					push_error(R"("class_name" should be used before annotations (except @tool).)");
-				}
 				advance();
 				if (head->identifier != nullptr) {
 					push_error(R"("class_name" can only be used once.)");
@@ -585,9 +553,6 @@ void GDScriptParser::parse_program() {
 				}
 				break;
 			case GDScriptTokenizer::Token::EXTENDS:
-				if (premature_annotation != nullptr) {
-					push_error(R"("extends" should be used before annotations (except @tool).)");
-				}
 				advance();
 				if (head->extends_used) {
 					push_error(R"("extends" can only be used once.)");
@@ -597,27 +562,13 @@ void GDScriptParser::parse_program() {
 				}
 				break;
 			default:
-				should_break = true;
+				// No tokens are allowed between script annotations and class/extends.
+				can_have_class_or_extends = false;
 				break;
 		}
 
 		if (panic_mode) {
 			synchronize();
-		}
-	}
-
-	if (match(GDScriptTokenizer::Token::ANNOTATION)) {
-		// Check for a script-level, or standalone annotation.
-		AnnotationNode *annotation = parse_annotation(AnnotationInfo::SCRIPT | AnnotationInfo::STANDALONE | AnnotationInfo::CLASS_LEVEL);
-		if (annotation != nullptr) {
-			if (annotation->applies_to(AnnotationInfo::SCRIPT | AnnotationInfo::STANDALONE)) {
-				if (previous.type != GDScriptTokenizer::Token::NEWLINE) {
-					push_error(R"(Expected newline after a standalone annotation.)");
-				}
-				annotation->apply(this, head);
-			} else {
-				annotation_stack.push_back(annotation);
-			}
 		}
 	}
 
@@ -2283,7 +2234,14 @@ GDScriptParser::ExpressionNode *GDScriptParser::parse_expression(bool p_can_assi
 }
 
 GDScriptParser::IdentifierNode *GDScriptParser::parse_identifier() {
-	return static_cast<IdentifierNode *>(parse_identifier(nullptr, false));
+	IdentifierNode *identifier = static_cast<IdentifierNode *>(parse_identifier(nullptr, false));
+#ifdef DEBUG_ENABLED
+	// Check for spoofing here (if available in TextServer) since this isn't called inside expressions. This is only relevant for declarations.
+	if (identifier && TS->has_feature(TextServer::FEATURE_UNICODE_SECURITY) && TS->spoof_check(identifier->name.operator String())) {
+		push_warning(identifier, GDScriptWarning::CONFUSABLE_IDENTIFIER, identifier->name.operator String());
+	}
+#endif
+	return identifier;
 }
 
 GDScriptParser::ExpressionNode *GDScriptParser::parse_identifier(ExpressionNode *p_previous_operand, bool p_can_assign) {
