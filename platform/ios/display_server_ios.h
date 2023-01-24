@@ -113,11 +113,12 @@ public:
 
 	void touch_press(int p_idx, int p_x, int p_y, bool p_pressed, bool p_double_click);
 	void touch_drag(int p_idx, int p_prev_x, int p_prev_y, int p_x, int p_y, float p_pressure, Vector2 p_tilt);
-	void touches_cancelled(int p_idx);
+	void touches_canceled(int p_idx);
 
 	// MARK: Keyboard
 
-	void key(Key p_key, char32_t p_char, bool p_pressed);
+	void key(Key p_key, char32_t p_char, Key p_unshifted, Key p_physical, NSInteger p_modifier, bool p_pressed);
+	bool is_keyboard_active() const;
 
 	// MARK: Motion
 
