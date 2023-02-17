@@ -2856,7 +2856,7 @@ void CodeEdit::_filter_code_completion_candidates_impl() {
 	const int caret_line = get_caret_line();
 	const int caret_column = get_caret_column();
 	const String line = get_line(caret_line);
-	ERR_FAIL_INDEX_MSG(caret_column - 1, line.length(), "Caret column exceeds line length.");
+	ERR_FAIL_INDEX_MSG(caret_column, line.length() + 1, "Caret column exceeds line length.");
 
 	if (caret_column > 0 && line[caret_column - 1] == '(' && !code_completion_forced) {
 		cancel_code_completion();
@@ -3088,6 +3088,8 @@ void CodeEdit::_filter_code_completion_candidates_impl() {
 	}
 
 	code_completion_options.append_array(completion_options_casei);
+	code_completion_options.append_array(completion_options_substr);
+	code_completion_options.append_array(completion_options_substr_casei);
 	code_completion_options.append_array(completion_options_subseq);
 	code_completion_options.append_array(completion_options_subseq_casei);
 

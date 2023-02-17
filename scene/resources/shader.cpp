@@ -42,14 +42,23 @@ Shader::Mode Shader::get_mode() const {
 }
 
 void Shader::_dependency_changed() {
-	RenderingServer::get_singleton()->shader_set_code(shader, RenderingServer::get_singleton()->shader_get_code(shader));
+	// Preprocess and compile the code again because a dependency has changed. It also calls emit_changed() for us.
+	_recompile();
+}
 
-	emit_changed();
+void Shader::_recompile() {
+	set_code(get_code());
 }
 
 void Shader::set_path(const String &p_path, bool p_take_over) {
 	Resource::set_path(p_path, p_take_over);
 	RS::get_singleton()->shader_set_path_hint(shader, p_path);
+}
+
+void Shader::set_include_path(const String &p_path) {
+	// Used only if the shader does not have a resource path set,
+	// for example during loading stage or when created by code.
+	include_path = p_path;
 }
 
 void Shader::set_code(const String &p_code) {
@@ -77,11 +86,15 @@ void Shader::set_code(const String &p_code) {
 	HashSet<Ref<ShaderInclude>> new_include_dependencies;
 
 	{
+		String path = get_path();
+		if (path.is_empty()) {
+			path = include_path;
+		}
 		// Preprocessor must run here and not in the server because:
 		// 1) Need to keep track of include dependencies at resource level
 		// 2) Server does not do interaction with Resource filetypes, this is a scene level feature.
 		ShaderPreprocessor preprocessor;
-		preprocessor.preprocess(p_code, "", pp_code, nullptr, nullptr, nullptr, &new_include_dependencies);
+		preprocessor.preprocess(p_code, path, pp_code, nullptr, nullptr, nullptr, &new_include_dependencies);
 	}
 
 	// This ensures previous include resources are not freed and then re-loaded during parse (which would make compiling slower)
@@ -228,6 +241,7 @@ Ref<Resource> ResourceFormatLoaderShader::load(const String &p_path, const Strin
 	String str;
 	str.parse_utf8((const char *)buffer.ptr(), buffer.size());
 
+	shader->set_include_path(p_path);
 	shader->set_code(str);
 
 	if (r_error) {

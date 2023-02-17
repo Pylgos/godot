@@ -693,7 +693,7 @@ void EditorProperty::gui_input(const Ref<InputEvent> &p_event) {
 			bool is_valid_revert = false;
 			Variant revert_value = EditorPropertyRevert::get_property_revert_value(object, property, &is_valid_revert);
 			ERR_FAIL_COND(!is_valid_revert);
-			emit_changed(property, revert_value);
+			emit_changed(_get_revert_property(), revert_value);
 			update_property();
 		}
 
@@ -886,7 +886,7 @@ void EditorProperty::_update_pin_flags() {
 
 static Control *make_help_bit(const String &p_text, bool p_property) {
 	EditorHelpBit *help_bit = memnew(EditorHelpBit);
-	help_bit->get_rich_text()->set_fixed_size_to_width(360 * EDSCALE);
+	help_bit->get_rich_text()->set_custom_minimum_size(Size2(360 * EDSCALE, 1));
 
 	PackedStringArray slices = p_text.split("::", false);
 	if (slices.is_empty()) {
@@ -1084,7 +1084,7 @@ void EditorInspectorPlugin::parse_group(Object *p_object, const String &p_group)
 	GDVIRTUAL_CALL(_parse_group, p_object, p_group);
 }
 
-bool EditorInspectorPlugin::parse_property(Object *p_object, const Variant::Type p_type, const String &p_path, const PropertyHint p_hint, const String &p_hint_text, const uint32_t p_usage, const bool p_wide) {
+bool EditorInspectorPlugin::parse_property(Object *p_object, const Variant::Type p_type, const String &p_path, const PropertyHint p_hint, const String &p_hint_text, const BitField<PropertyUsageFlags> p_usage, const bool p_wide) {
 	bool ret = false;
 	GDVIRTUAL_CALL(_parse_property, p_object, p_type, p_path, p_hint, p_hint_text, p_usage, p_wide, ret);
 	return ret;
@@ -2566,12 +2566,13 @@ bool EditorInspector::_is_property_disabled_by_feature_profile(const StringName 
 }
 
 void EditorInspector::update_tree() {
-	//to update properly if all is refreshed
+	// Store currently selected and focused elements to restore after the update.
+	// TODO: Can be useful to store more context for the focusable, such as the caret position in LineEdit.
 	StringName current_selected = property_selected;
 	int current_focusable = -1;
 
 	if (property_focusable != -1) {
-		//check focusable is really focusable
+		// Check that focusable is actually focusable.
 		bool restore_focus = false;
 		Control *focused = get_viewport() ? get_viewport()->gui_get_focus_owner() : nullptr;
 		if (focused) {
@@ -2579,8 +2580,8 @@ void EditorInspector::update_tree() {
 			while (parent) {
 				EditorInspector *inspector = Object::cast_to<EditorInspector>(parent);
 				if (inspector) {
-					restore_focus = inspector == this; //may be owned by another inspector
-					break; //exit after the first inspector is found, since there may be nested ones
+					restore_focus = inspector == this; // May be owned by another inspector.
+					break; // Exit after the first inspector is found, since there may be nested ones.
 				}
 				parent = parent->get_parent();
 			}
@@ -2591,7 +2592,9 @@ void EditorInspector::update_tree() {
 		}
 	}
 
-	_clear();
+	// Only hide plugins if we are not editing any object.
+	// This should be handled outside of the update_tree call anyway (see EditorInspector::edit), but might as well keep it safe.
+	_clear(!object);
 
 	if (!object) {
 		return;
@@ -2974,11 +2977,11 @@ void EditorInspector::update_tree() {
 				// Only process group label if this is not the group or subgroup.
 				if ((i == 0 && component == group) || (i == 1 && component == subgroup)) {
 					if (section_name_style == EditorPropertyNameProcessor::STYLE_LOCALIZED) {
-						label = TTRGET(component);
+						label = EditorPropertyNameProcessor::get_singleton()->translate_group_name(component);
 						tooltip = component;
 					} else {
 						label = component;
-						tooltip = TTRGET(component);
+						tooltip = EditorPropertyNameProcessor::get_singleton()->translate_group_name(component);
 					}
 				} else {
 					label = EditorPropertyNameProcessor::get_singleton()->process_name(component, section_name_style);
@@ -3301,17 +3304,19 @@ void EditorInspector::update_property(const String &p_prop) {
 	}
 }
 
-void EditorInspector::_clear() {
+void EditorInspector::_clear(bool p_hide_plugins) {
 	while (main_vbox->get_child_count()) {
 		memdelete(main_vbox->get_child(0));
 	}
+
 	property_selected = StringName();
 	property_focusable = -1;
 	editor_property_map.clear();
 	sections.clear();
 	pending.clear();
 	restart_request_props.clear();
-	if (_is_main_editor_inspector()) {
+
+	if (p_hide_plugins && _is_main_editor_inspector()) {
 		EditorNode::get_singleton()->hide_unused_editors(this);
 	}
 }
@@ -3405,7 +3410,6 @@ void EditorInspector::register_text_enter(Node *p_line_edit) {
 }
 
 void EditorInspector::_filter_changed(const String &p_text) {
-	_clear();
 	update_tree();
 }
 

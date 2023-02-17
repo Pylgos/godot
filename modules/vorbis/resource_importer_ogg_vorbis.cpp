@@ -33,8 +33,9 @@
 #include "core/io/file_access.h"
 #include "core/io/resource_saver.h"
 #include "scene/resources/texture.h"
-#include "thirdparty/libogg/ogg/ogg.h"
-#include "thirdparty/libvorbis/vorbis/codec.h"
+
+#include <ogg/ogg.h>
+#include <vorbis/codec.h>
 
 #ifdef TOOLS_ENABLED
 #include "editor/import/audio_stream_import_settings.h"
@@ -73,7 +74,7 @@ String ResourceImporterOggVorbis::get_preset_name(int p_idx) const {
 }
 
 void ResourceImporterOggVorbis::get_import_options(const String &p_path, List<ImportOption> *r_options, int p_preset) const {
-	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "loop"), true));
+	r_options->push_back(ImportOption(PropertyInfo(Variant::BOOL, "loop"), false));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::FLOAT, "loop_offset"), 0));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::FLOAT, "bpm", PROPERTY_HINT_RANGE, "0,400,0.01,or_greater"), 0));
 	r_options->push_back(ImportOption(PropertyInfo(Variant::INT, "beat_count", PROPERTY_HINT_RANGE, "0,512,or_greater"), 0));

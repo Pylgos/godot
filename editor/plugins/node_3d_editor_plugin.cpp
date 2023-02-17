@@ -1414,10 +1414,7 @@ Transform3D Node3DEditorViewport::_compute_transform(TransformMode p_mode, const
 
 				// Recalculate orthogonalized scale without moving origin.
 				if (p_orthogonal) {
-					s.basis = p_original_local.basis.scaled_orthogonal(p_motion + Vector3(1, 1, 1));
-					// The scaled_orthogonal() does not require orthogonal Basis,
-					// but it may make a bit skew by precision problems.
-					s.basis.orthogonalize();
+					s.basis = p_original.basis.scaled_orthogonal(p_motion + Vector3(1, 1, 1));
 				}
 			}
 
@@ -1669,6 +1666,7 @@ void Node3DEditorViewport::_sinput(const Ref<InputEvent> &p_event) {
 						} break;
 						case TRANSFORM_Z_AXIS: {
 							_edit.plane = TRANSFORM_VIEW;
+							// TRANSLATORS: This refers to the transform of the view plane.
 							set_message(TTR("View Plane Transform."), 2);
 
 						} break;
@@ -3395,7 +3393,6 @@ void Node3DEditorViewport::_menu_option(int p_option) {
 				VIEW_DISPLAY_SHADELESS,
 				VIEW_DISPLAY_LIGHTING,
 				VIEW_DISPLAY_NORMAL_BUFFER,
-				VIEW_DISPLAY_WIREFRAME,
 				VIEW_DISPLAY_DEBUG_SHADOW_ATLAS,
 				VIEW_DISPLAY_DEBUG_DIRECTIONAL_SHADOW_ATLAS,
 				VIEW_DISPLAY_DEBUG_VOXEL_GI_ALBEDO,
@@ -3425,7 +3422,6 @@ void Node3DEditorViewport::_menu_option(int p_option) {
 				Viewport::DEBUG_DRAW_UNSHADED,
 				Viewport::DEBUG_DRAW_LIGHTING,
 				Viewport::DEBUG_DRAW_NORMAL_BUFFER,
-				Viewport::DEBUG_DRAW_WIREFRAME,
 				Viewport::DEBUG_DRAW_SHADOW_ATLAS,
 				Viewport::DEBUG_DRAW_DIRECTIONAL_SHADOW_ATLAS,
 				Viewport::DEBUG_DRAW_VOXEL_GI_ALBEDO,
@@ -3448,9 +3444,7 @@ void Node3DEditorViewport::_menu_option(int p_option) {
 				Viewport::DEBUG_DRAW_MOTION_VECTORS,
 			};
 
-			int idx = 0;
-
-			while (display_options[idx] != VIEW_MAX) {
+			for (int idx = 0; display_options[idx] != VIEW_MAX; idx++) {
 				int id = display_options[idx];
 				int item_idx = view_menu->get_popup()->get_item_index(id);
 				if (item_idx != -1) {
@@ -3464,7 +3458,6 @@ void Node3DEditorViewport::_menu_option(int p_option) {
 				if (id == p_option) {
 					viewport->set_debug_draw(debug_draw_modes[idx]);
 				}
-				idx++;
 			}
 		} break;
 	}
@@ -4611,7 +4604,9 @@ void Node3DEditorViewport::update_transform(Point2 p_mousepos, bool p_shift) {
 			// TRANSLATORS: Refers to changing the scale of a node in the 3D editor.
 			set_message(TTR("Scaling:") + " (" + String::num(motion_snapped.x, snap_step_decimals) + ", " +
 					String::num(motion_snapped.y, snap_step_decimals) + ", " + String::num(motion_snapped.z, snap_step_decimals) + ")");
-			motion = _edit.original.basis.inverse().xform(motion);
+			if (local_coords) {
+				motion = _edit.original.basis.inverse().xform(motion);
+			}
 
 			List<Node *> &selection = editor_selection->get_selected_node_list();
 			for (Node *E : selection) {
@@ -4632,14 +4627,14 @@ void Node3DEditorViewport::update_transform(Point2 p_mousepos, bool p_shift) {
 				if (se->gizmo.is_valid()) {
 					for (KeyValue<int, Transform3D> &GE : se->subgizmos) {
 						Transform3D xform = GE.value;
-						Transform3D new_xform = _compute_transform(TRANSFORM_SCALE, se->original * xform, xform, motion, snap, local_coords, true); // Force orthogonal with subgizmo.
+						Transform3D new_xform = _compute_transform(TRANSFORM_SCALE, se->original * xform, xform, motion, snap, local_coords, _edit.plane != TRANSFORM_VIEW); // Force orthogonal with subgizmo.
 						if (!local_coords) {
 							new_xform = se->original.affine_inverse() * new_xform;
 						}
 						se->gizmo->set_subgizmo_transform(GE.key, new_xform);
 					}
 				} else {
-					Transform3D new_xform = _compute_transform(TRANSFORM_SCALE, se->original, se->original_local, motion, snap, local_coords, sp->get_rotation_edit_mode() != Node3D::ROTATION_EDIT_MODE_BASIS);
+					Transform3D new_xform = _compute_transform(TRANSFORM_SCALE, se->original, se->original_local, motion, snap, local_coords, sp->get_rotation_edit_mode() != Node3D::ROTATION_EDIT_MODE_BASIS && _edit.plane != TRANSFORM_VIEW);
 					_transform_gizmo_apply(se->sp, new_xform, local_coords);
 				}
 			}
@@ -4712,7 +4707,9 @@ void Node3DEditorViewport::update_transform(Point2 p_mousepos, bool p_shift) {
 			// TRANSLATORS: Refers to changing the position of a node in the 3D editor.
 			set_message(TTR("Translating:") + " (" + String::num(motion_snapped.x, snap_step_decimals) + ", " +
 					String::num(motion_snapped.y, snap_step_decimals) + ", " + String::num(motion_snapped.z, snap_step_decimals) + ")");
-			motion = spatial_editor->get_gizmo_transform().basis.inverse().xform(motion);
+			if (local_coords) {
+				motion = spatial_editor->get_gizmo_transform().basis.inverse().xform(motion);
+			}
 
 			List<Node *> &selection = editor_selection->get_selected_node_list();
 			for (Node *E : selection) {
@@ -4960,6 +4957,7 @@ Node3DEditorViewport::Node3DEditorViewport(Node3DEditor *p_spatial_editor, int p
 	view_menu->get_popup()->add_separator();
 	view_menu->get_popup()->add_check_shortcut(ED_SHORTCUT("spatial_editor/view_lock_rotation", TTR("Lock View Rotation")), VIEW_LOCK_ROTATION);
 	view_menu->get_popup()->add_separator();
+	// TRANSLATORS: "Normal" as in "normal life", not "normal vector".
 	view_menu->get_popup()->add_radio_check_shortcut(ED_SHORTCUT("spatial_editor/view_display_normal", TTR("Display Normal")), VIEW_DISPLAY_NORMAL);
 	view_menu->get_popup()->add_radio_check_shortcut(ED_SHORTCUT("spatial_editor/view_display_wireframe", TTR("Display Wireframe")), VIEW_DISPLAY_WIREFRAME);
 	view_menu->get_popup()->add_radio_check_shortcut(ED_SHORTCUT("spatial_editor/view_display_overdraw", TTR("Display Overdraw")), VIEW_DISPLAY_OVERDRAW);

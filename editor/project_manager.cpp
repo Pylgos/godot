@@ -510,6 +510,8 @@ private:
 					ProjectSettings::CustomMap initial_settings;
 
 					// Be sure to change this code if/when renderers are changed.
+					// Default values are "forward_plus" for the main setting, "mobile" for the mobile override,
+					// and "gl_compatibility" for the web override.
 					String renderer_type = renderer_button_group->get_pressed_button()->get_meta(SNAME("rendering_method"));
 					initial_settings["rendering/renderer/rendering_method"] = renderer_type;
 
@@ -522,6 +524,8 @@ private:
 						project_features.push_back("Mobile");
 					} else if (renderer_type == "gl_compatibility") {
 						project_features.push_back("GL Compatibility");
+						// Also change the default rendering method for the mobile override.
+						initial_settings["rendering/renderer/rendering_method.mobile"] = "gl_compatibility";
 					} else {
 						WARN_PRINT("Unknown renderer type. Please report this as a bug on GitHub.");
 					}
@@ -961,8 +965,8 @@ public:
 		default_files_container->add_child(l);
 		vcs_metadata_selection = memnew(OptionButton);
 		vcs_metadata_selection->set_custom_minimum_size(Size2(100, 20));
-		vcs_metadata_selection->add_item("None", (int)EditorVCSInterface::VCSMetadata::NONE);
-		vcs_metadata_selection->add_item("Git", (int)EditorVCSInterface::VCSMetadata::GIT);
+		vcs_metadata_selection->add_item(TTR("None"), (int)EditorVCSInterface::VCSMetadata::NONE);
+		vcs_metadata_selection->add_item(TTR("Git"), (int)EditorVCSInterface::VCSMetadata::GIT);
 		vcs_metadata_selection->select((int)EditorVCSInterface::VCSMetadata::GIT);
 		default_files_container->add_child(vcs_metadata_selection);
 		Control *spacer = memnew(Control);
@@ -1355,6 +1359,8 @@ void ProjectList::load_projects() {
 		create_project_item_control(i);
 	}
 
+	sort_projects();
+
 	set_v_scroll(0);
 
 	update_icons_async();
@@ -1503,8 +1509,13 @@ void ProjectList::create_project_item_control(int p_index) {
 		path_hb->add_child(show);
 
 		if (!item.missing) {
+#if !defined(ANDROID_ENABLED) && !defined(WEB_ENABLED)
 			show->connect("pressed", callable_mp(this, &ProjectList::_show_project).bind(item.path));
 			show->set_tooltip_text(TTR("Show in File Manager"));
+#else
+			// Opening the system file manager is not supported on the Android and web editors.
+			show->hide();
+#endif
 		} else {
 			show->set_tooltip_text(TTR("Error: Project is missing on the filesystem."));
 		}
