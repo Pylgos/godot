@@ -38,6 +38,7 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include "core/os/thread.h"
 
 struct streaming_buffer;
 
