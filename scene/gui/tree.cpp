@@ -4202,6 +4202,10 @@ void Tree::item_deselected(int p_column, TreeItem *p_item) {
 
 	if (select_mode == SELECT_MULTI || select_mode == SELECT_SINGLE) {
 		p_item->cells.write[p_column].selected = false;
+	} else if (select_mode == SELECT_ROW) {
+		for (int i = 0; i < p_item->cells.size(); i++) {
+			p_item->cells.write[i].selected = false;
+		}
 	}
 	queue_redraw();
 }
@@ -4215,14 +4219,20 @@ Tree::SelectMode Tree::get_select_mode() const {
 }
 
 void Tree::deselect_all() {
-	TreeItem *item = get_next_selected(get_root());
-	while (item) {
-		for (int i = 0; i < columns.size(); i++) {
-			item->deselect(i);
+	if (root) {
+		TreeItem *item = root;
+		while (item) {
+			if (select_mode == SELECT_ROW) {
+				item->deselect(0);
+			} else {
+				for (int i = 0; i < columns.size(); i++) {
+					item->deselect(i);
+				}
+			}
+			TreeItem *prev_item = item;
+			item = get_next_selected(root);
+			ERR_FAIL_COND(item == prev_item);
 		}
-		TreeItem *prev_item = item;
-		item = get_next_selected(get_root());
-		ERR_FAIL_COND(item == prev_item);
 	}
 
 	selected_item = nullptr;

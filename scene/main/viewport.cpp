@@ -875,6 +875,17 @@ void Viewport::_set_size(const Size2i &p_size, const Size2i &p_size_2d_override,
 	}
 
 	emit_signal(SNAME("size_changed"));
+
+	Rect2i limit = get_visible_rect();
+	for (int i = 0; i < gui.sub_windows.size(); ++i) {
+		Window *sw = gui.sub_windows[i].window;
+		Rect2i rect = Rect2i(sw->position, sw->size);
+		Rect2i new_rect = sw->fit_rect_in_parent(rect, limit);
+		if (new_rect != rect) {
+			sw->set_position(new_rect.position);
+			sw->set_size(new_rect.size);
+		}
+	}
 }
 
 Size2i Viewport::_get_size() const {
@@ -2553,23 +2564,7 @@ bool Viewport::_sub_windows_forward_input(const Ref<InputEvent> &p_event) {
 				Rect2i new_rect(gui.subwindow_drag_pos + diff, gui.subwindow_focused->get_size());
 
 				if (gui.subwindow_focused->is_clamped_to_embedder()) {
-					Size2i limit = get_visible_rect().size;
-					if (new_rect.position.x + new_rect.size.x > limit.x) {
-						new_rect.position.x = limit.x - new_rect.size.x;
-					}
-					if (new_rect.position.y + new_rect.size.y > limit.y) {
-						new_rect.position.y = limit.y - new_rect.size.y;
-					}
-
-					if (new_rect.position.x < 0) {
-						new_rect.position.x = 0;
-					}
-
-					int title_height = gui.subwindow_focused->get_flag(Window::FLAG_BORDERLESS) ? 0 : gui.subwindow_focused->get_theme_constant(SNAME("title_height"));
-
-					if (new_rect.position.y < title_height) {
-						new_rect.position.y = title_height;
-					}
+					new_rect = gui.subwindow_focused->fit_rect_in_parent(new_rect, get_visible_rect());
 				}
 
 				gui.subwindow_focused->_rect_changed_callback(new_rect);
@@ -4281,6 +4276,11 @@ void SubViewport::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_ENTER_TREE: {
 			RS::get_singleton()->viewport_set_active(get_viewport_rid(), true);
+
+			SubViewportContainer *parent_svc = Object::cast_to<SubViewportContainer>(get_parent());
+			if (parent_svc) {
+				parent_svc->recalc_force_viewport_sizes();
+			}
 		} break;
 
 		case NOTIFICATION_EXIT_TREE: {
@@ -4321,6 +4321,17 @@ void SubViewport::_bind_methods() {
 	BIND_ENUM_CONSTANT(UPDATE_WHEN_VISIBLE);
 	BIND_ENUM_CONSTANT(UPDATE_WHEN_PARENT_VISIBLE);
 	BIND_ENUM_CONSTANT(UPDATE_ALWAYS);
+}
+
+void SubViewport::_validate_property(PropertyInfo &p_property) const {
+	if (p_property.name == "size") {
+		SubViewportContainer *parent_svc = Object::cast_to<SubViewportContainer>(get_parent());
+		if (parent_svc && parent_svc->is_stretch_enabled()) {
+			p_property.usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_READ_ONLY;
+		} else {
+			p_property.usage = PROPERTY_USAGE_DEFAULT;
+		}
+	}
 }
 
 SubViewport::SubViewport() {

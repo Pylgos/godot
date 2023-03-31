@@ -399,8 +399,12 @@ void EditorResourcePicker::_edit_menu_cbk(int p_which) {
 			file_system_dock->navigate_to_path(edited_resource->get_path());
 
 			// Ensure that the FileSystem dock is visible.
-			TabContainer *tab_container = (TabContainer *)file_system_dock->get_parent_control();
-			tab_container->set_current_tab(tab_container->get_tab_idx_from_control(file_system_dock));
+			if (file_system_dock->get_window() == get_tree()->get_root()) {
+				TabContainer *tab_container = (TabContainer *)file_system_dock->get_parent_control();
+				tab_container->set_current_tab(tab_container->get_tab_idx_from_control(file_system_dock));
+			} else {
+				file_system_dock->get_window()->grab_focus();
+			}
 		} break;
 
 		default: {
@@ -920,6 +924,7 @@ EditorResourcePicker::EditorResourcePicker(bool p_hide_assign_button_controls) {
 	assign_button->set_flat(true);
 	assign_button->set_h_size_flags(SIZE_EXPAND_FILL);
 	assign_button->set_clip_text(true);
+	assign_button->set_auto_translate(false);
 	SET_DRAG_FORWARDING_GCD(assign_button, EditorResourcePicker);
 	add_child(assign_button);
 	assign_button->connect("pressed", callable_mp(this, &EditorResourcePicker::_resource_selected));
